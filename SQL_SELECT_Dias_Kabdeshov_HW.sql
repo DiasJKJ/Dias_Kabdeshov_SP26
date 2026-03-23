@@ -1,0 +1,416 @@
+-- Part 1. 
+
+-- Task 1
+-- The marketing team needs a list of animation movies between 2017 and 2019 
+-- to promote family-friendly content in an upcoming season in stores. 
+-- Show all animation movies released during this period with rate more than 1,
+-- sorted alphabetically
+-- With CTE
+-- WITH animation_films AS (
+--     SELECT f.title, f.release_year, f.rental_rate
+--     FROM film f
+--     INNER JOIN film_category fc ON f.film_id = fc.film_id
+--     INNER JOIN category c ON fc.category_id = c.category_id
+--     WHERE c.name = 'Animation'
+--       AND f.release_year BETWEEN 2017 AND 2019
+--       AND f.rental_rate > '1'
+-- )
+-- SELECT *
+-- FROM animation_films
+-- ORDER BY title;
+-- In this case i would honestly say CTE solution is not really advantagous in any sense. 
+-- Its not easier to read, query itself is not complex enough to need CTE
+-- and doesnt need portions that will be reused
+
+-- With Subquery
+-- SELECT title, release_year, rental_rate
+-- FROM film
+-- WHERE film_id in (
+-- 	SELECT fc.film_id FROM film_category fc
+-- 	INNER JOIN category c ON fc.category_id = c.category_id
+-- 	WHERE c.name = 'Animation'
+-- )
+-- AND release_year BETWEEN 2017 AND 2019
+-- AND rental_rate > '1'
+-- ORDER BY title;
+-- Subquery solution is more compact, but maybe less performant in larger datasets
+
+-- With Joins
+-- SELECT f.title, f.release_year, f.rental_rate
+-- FROM film f
+-- INNER JOIN film_category fc ON f.film_id = fc.film_id
+-- INNER JOIN category c ON fc.category_id = c.category_id
+-- WHERE c.name = 'Animation'
+--   AND f.release_year BETWEEN 2017 AND 2019
+--   AND f.rental_rate > '1'
+-- ORDER BY f.title;
+-- The most optimal for this task, straightforward logic, clear and good performance.
+-- Would choose it in production
+
+
+-- Task 2
+-- The finance department requires a report on store performance to assess profitability 
+-- and plan resource allocation for stores after March 2017. 
+-- Calculate the revenue earned by each rental store after March 2017 (since April) 
+-- (include columns: address and address2 – as one column, revenue)
+-- With CTE
+-- WITH StoreRevenue AS (
+--     SELECT 
+--         i.store_id,
+--         SUM(p.amount) AS total_revenue
+--     FROM payment p
+--     JOIN rental r ON p.rental_id = r.rental_id
+--     JOIN inventory i ON r.inventory_id = i.inventory_id
+--     WHERE p.payment_date >= '2017-04-01'
+--     GROUP BY i.store_id
+-- )
+-- SELECT 
+--     a.address || ' ' || COALESCE(a.address2, '') AS store_address,
+--     sr.total_revenue AS revenue
+-- FROM StoreRevenue sr
+-- INNER JOIN store s ON sr.store_id = s.store_id
+-- INNER JOIN address a ON s.address_id = a.address_id;
+-- It is better for readability, has distinctive separation of logic.
+-- If something goes wrong in results it is easier to find where is mistake because of this separation
+
+-- With Subquery
+-- SELECT 
+--     addr.address || ' ' || COALESCE(addr.address2, '') AS store_address,
+--     report.revenue
+-- FROM (
+--     SELECT i.store_id, SUM(p.amount) as revenue
+--     FROM payment p
+--     INNER JOIN rental r ON p.rental_id = r.rental_id
+--     INNER JOIN inventory i ON r.inventory_id = i.inventory_id
+--     WHERE p.payment_date >= '2017-04-01'
+--     GROUP BY i.store_id
+-- ) AS report
+-- INNER JOIN store st ON report.store_id = st.store_id
+-- INNER JOIN address addr ON st.address_id = addr.address_id;
+
+
+-- With Joins
+-- SELECT 
+--     s.store_id,
+--     CONCAT(a.address, ' ', COALESCE(a.address2,'')) AS full_address,
+--     SUM(p.amount) AS revenue
+-- FROM payment p
+-- INNER JOIN rental r ON p.rental_id = r.rental_id
+-- INNER JOIN inventory i ON r.inventory_id = i.inventory_id
+-- INNER JOIN store s ON i.store_id = s.store_id
+-- INNER JOIN address a ON s.address_id = a.address_id
+-- WHERE p.payment_date >= '2017-04-01'
+-- GROUP BY s.store_id, full_address
+-- ORDER BY revenue DESC;
+-- Straigtforward solution, optimal.
+
+-- Task 3
+-- The marketing department in our stores aims to identify the most successful actors since 2015
+-- to boost customer interest in their films. Show top-5 actors by number of movies 
+-- (released since 2015) they took part in 
+-- (columns: first_name, last_name, number_of_movies, sorted by number_of_movies in descending order)
+-- With CTE
+-- WITH ModernFilms AS (
+--     SELECT film_id 
+--     FROM film 
+--     WHERE release_year >= 2015
+-- ),
+-- ActorCounts AS (
+--     SELECT actor_id, COUNT(film_id) AS number_of_movies
+--     FROM film_actor
+--     WHERE film_id IN (SELECT film_id FROM ModernFilms)
+--     GROUP BY actor_id
+-- )
+-- SELECT a.first_name, a.last_name, ac.number_of_movies
+-- FROM ActorCounts ac
+-- INNER JOIN actor a ON ac.actor_id = a.actor_id
+-- ORDER BY ac.number_of_movies DESC
+-- LIMIT 5;
+-- Separated actor counts and films released since 2015, reduces use of joins
+
+-- With Subquery
+-- SELECT a.first_name, a.last_name, top_list.movie_count AS number_of_movies
+-- FROM public.actor AS a
+-- INNER JOIN (
+--     SELECT fa.actor_id, COUNT(*) AS movie_count
+--     FROM public.film_actor AS fa
+--     INNER JOIN public.film AS f ON fa.film_id = f.film_id
+--     WHERE f.release_year >= 2015
+--     GROUP BY fa.actor_id
+--     ORDER BY movie_count DESC
+--     LIMIT 5
+-- ) AS top_list ON a.actor_id = top_list.actor_id
+-- ORDER BY number_of_movies DESC;
+-- Honestly, its very unnecessary
+
+-- With Joins
+-- SELECT a.first_name, a.last_name, COUNT(fa.actor_id) as number_of_movies
+-- FROM actor a
+-- INNER JOIN film_actor fa ON a.actor_id = fa.actor_id
+-- INNER JOIN film f ON f.film_id = fa.film_id
+-- WHERE f.release_year >= 2015
+-- GROUP BY a.first_name, a.last_name
+-- ORDER BY number_of_movies DESC
+-- LIMIT 5;
+-- The best one, very optimal, good performance for the dataset, 
+-- doesn't require much resources. The one i would use in production.
+
+-- Task 4
+-- The marketing team needs to track the production trends of Drama, Travel, and Documentary films
+-- to inform genre-specific marketing strategies. Show number of Drama, Travel, Documentary per year 
+-- (include columns: release_year, number_of_drama_movies, number_of_travel_movies, number_of_documentary_movies), 
+-- sorted by release year in descending order. Dealing with NULL values is encouraged)
+-- With CTE
+-- WITH CategorizedList AS (
+--     SELECT 
+--         f.release_year,
+--         c.name AS genre
+--     FROM public.film AS f
+--     INNER JOIN public.film_category AS fc ON f.film_id = fc.film_id
+--     INNER JOIN public.category AS c ON fc.category_id = c.category_id
+--     WHERE c.name IN ('Drama', 'Travel', 'Documentary')
+-- )
+-- SELECT 
+--     release_year,
+--     COUNT(*) FILTER (WHERE genre = 'Drama') AS number_of_drama_movies,
+--     COUNT(*) FILTER (WHERE genre = 'Travel') AS number_of_travel_movies,
+--     COUNT(*) FILTER (WHERE genre = 'Documentary') AS number_of_documentary_movies
+-- FROM CategorizedList
+-- GROUP BY release_year
+-- ORDER BY release_year DESC;
+-- Created CategorizedList to deal with joins separately. Used FILTER because its more readable
+-- It might be too wordy, but honestly more preferable for production
+
+-- With Subquery
+-- SELECT 
+--     trends.release_year,
+--     SUM(CASE WHEN trends.genre = 'Drama' THEN 1 ELSE 0 END) AS number_of_drama_movies,
+--     SUM(CASE WHEN trends.genre = 'Travel' THEN 1 ELSE 0 END) AS number_of_travel_movies,
+--     SUM(CASE WHEN trends.genre = 'Documentary' THEN 1 ELSE 0 END) AS number_of_documentary_movies
+-- FROM (
+--     SELECT f.release_year, c.name AS genre
+--     FROM public.film f
+--     INNER JOIN public.film_category fc ON f.film_id = fc.film_id
+--     INNER JOIN public.category c ON fc.category_id = c.category_id
+--     WHERE c.name IN ('Drama', 'Travel', 'Documentary')
+-- ) AS trends
+-- GROUP BY trends.release_year
+-- ORDER BY trends.release_year DESC;
+-- Has no advantages over other solutions
+
+-- With Joins
+-- SELECT f.release_year, 
+-- 	COALESCE(SUM(CASE WHEN c.name = 'Drama' THEN 1 ELSE 0 END), 0) AS number_of_drama_movies,
+--     COALESCE(SUM(CASE WHEN c.name = 'Travel' THEN 1 ELSE 0 END), 0) AS number_of_travel_movies,
+--     COALESCE(SUM(CASE WHEN c.name = 'Documentary' THEN 1 ELSE 0 END), 0) AS number_of_documentary_movies
+-- FROM film f
+-- INNER JOIN film_category AS fc ON f.film_id = fc.film_id
+-- INNER JOIN category AS c ON fc.category_id = c.category_id
+-- WHERE c.name IN ('Drama', 'Travel', 'Documentary')
+-- GROUP BY f.release_year
+-- ORDER BY f.release_year DESC;
+-- Has CASE making it less readable than FILTER counterpart in CTE solution
+-- But other than that pretty staightforward, CTE solution is preferrable nonetheless
+
+
+-- Part 2
+
+-- Task 1
+-- The HR department aims to reward top-performing employees in 2017 with bonuses
+-- to recognize their contribution to stores revenue. 
+-- Show which three employees generated the most revenue in 2017? 
+
+-- With CTE
+-- WITH staff_revenue AS (
+--     SELECT p.staff_id, SUM(p.amount) AS total_revenue
+--     FROM payment p
+--     WHERE EXTRACT(YEAR FROM p.payment_date) = 2017
+--     GROUP BY p.staff_id
+-- )
+-- SELECT s.staff_id, s.first_name, s.last_name, total_revenue, s.store_id
+-- FROM staff_revenue sr
+-- INNER JOIN staff s ON sr.staff_id = s.staff_id
+-- ORDER BY total_revenue DESC
+-- LIMIT 3;
+-- More intuitive to undestand, has separation of logic
+
+-- With Subquery
+-- SELECT s.staff_id, s.first_name, s.last_name, sr.total_revenue, s.store_id
+-- FROM staff s
+-- INNER JOIN (
+--     SELECT p.staff_id, SUM(p.amount) AS total_revenue
+--     FROM payment p
+--     WHERE EXTRACT(YEAR FROM p.payment_date) = 2017
+--     GROUP BY p.staff_id
+-- ) sr
+--     ON s.staff_id = sr.staff_id
+-- ORDER BY sr.total_revenue DESC
+-- LIMIT 3;
+
+-- With Joins
+-- SELECT 	s.staff_id, s.first_name, s.last_name, SUM(p.amount) AS total_revenue, st.store_id
+-- FROM staff s
+-- INNER JOIN payment p ON p.staff_id = s.staff_id
+-- INNER JOIN store st ON s.store_id = st.store_id
+-- WHERE EXTRACT(YEAR FROM p.payment_date) = 2017
+-- GROUP BY s.staff_id, st.store_id, s.first_name, s.last_name
+-- ORDER BY total_revenue DESC
+-- LIMIT 3;
+-- Less intuitive to undestand, CTE solution much prefered
+
+-- Task 2
+-- The management team wants to identify the most popular movies 
+-- and their target audience age groups to optimize marketing efforts. 
+-- Show which 5 movies were rented more than others (number of rentals), 
+-- and what's the expected age of the audience for these movies? 
+-- To determine expected age please use 'Motion Picture Association film rating system'
+
+-- With CTE
+-- WITH rental_counts AS (
+--     SELECT i.film_id, COUNT(r.rental_id) AS rental_count
+--     FROM rental r
+--     INNER JOIN inventory i ON r.inventory_id = i.inventory_id
+--     GROUP BY i.film_id
+-- )
+-- SELECT f.film_id, f.title, rc.rental_count, f.rating,
+--     CASE 
+--         WHEN f.rating = 'G' THEN 0
+--         WHEN f.rating = 'PG' THEN 10
+--         WHEN f.rating = 'PG-13' THEN 13
+--         WHEN f.rating = 'R' THEN 17
+--         WHEN f.rating = 'NC-17' THEN 18
+--     END AS expected_age
+-- FROM rental_counts rc
+-- INNER JOIN film f ON rc.film_id = f.film_id
+-- ORDER BY rc.rental_count DESC
+-- LIMIT 5;
+-- This solution is very easy to read, deals well with complex logic
+
+-- With Subquery
+-- SELECT f.film_id, f.title, rc.rental_count, f.rating,
+--     CASE 
+--         WHEN f.rating = 'G' THEN 0
+--         WHEN f.rating = 'PG' THEN 10
+--         WHEN f.rating = 'PG-13' THEN 13
+--         WHEN f.rating = 'R' THEN 17
+--         WHEN f.rating = 'NC-17' THEN 18
+--     END AS expected_age
+-- FROM film f
+-- INNER JOIN (
+--     SELECT i.film_id, COUNT(r.rental_id) AS rental_count
+--     FROM inventory i
+--     INNER JOIN rental r ON i.inventory_id = r.inventory_id
+--     GROUP BY i.film_id
+-- ) rc
+--     ON f.film_id = rc.film_id
+-- ORDER BY rc.rental_count DESC
+-- LIMIT 5;
+-- A little harder to read, not the to use in production
+
+-- With Joins
+-- SELECT f.film_id, f.title, COUNT(r.rental_id) as rental_count, f.rating,
+-- 	CASE 
+--         WHEN f.rating = 'G' THEN 0
+--         WHEN f.rating = 'PG' THEN 10
+--         WHEN f.rating = 'PG-13' THEN 13
+--         WHEN f.rating = 'R' THEN 17
+--         WHEN f.rating = 'NC-17' THEN 18
+--     END AS expected_age
+-- FROM film f
+-- INNER JOIN inventory i ON f.film_id = i.film_id
+-- INNER JOIN rental r ON i.inventory_id = r.inventory_id
+-- GROUP BY f.film_id, f.title, f.rating
+-- ORDER BY rental_count DESC
+-- LIMIT 5
+-- Not many layers, fast, more compact. Separation of logic might have been for the better
+-- But nonetheless a better solution to implement in production
+
+
+-- Part 3
+-- The stores’ marketing team wants to analyze actors' inactivity periods 
+-- to select those with notable career breaks for targeted promotional campaigns, 
+-- highlighting their comebacks or consistent appearances 
+-- to engage customers with nostalgic or reliable film stars
+
+-- V1: gap between the latest release_year and current year per each actor;
+
+-- With CTE
+-- WITH last_film AS (
+--     SELECT fa.actor_id, MAX(f.release_year) AS last_release_year
+--     FROM film_actor fa
+--     INNER JOIN film f ON fa.film_id = f.film_id
+--     GROUP BY fa.actor_id
+-- )
+-- SELECT a.actor_id, a.first_name, a.last_name, lf.last_release_year,
+--     EXTRACT(YEAR FROM CURRENT_DATE) - lf.last_release_year AS inactivity_gap
+-- FROM last_film lf
+-- INNER JOIN actor a ON lf.actor_id = a.actor_id
+-- ORDER BY inactivity_gap DESC;
+
+-- With Subquery
+-- SELECT a.actor_id, a.first_name, a.last_name,
+--     (
+--         SELECT MAX(f.release_year)
+--         FROM film_actor fa
+--         INNER JOIN film f ON fa.film_id = f.film_id
+--         WHERE fa.actor_id = a.actor_id
+--     ) AS last_release_year,
+--     EXTRACT(YEAR FROM CURRENT_DATE) - (
+--         SELECT MAX(f.release_year)
+--         FROM film_actor fa
+--         INNER JOIN film f ON fa.film_id = f.film_id
+--         WHERE fa.actor_id = a.actor_id
+--     ) AS inactivity_gap
+-- FROM actor a
+-- ORDER BY inactivity_gap DESC;
+
+-- With Joins
+-- SELECT a.actor_id, a.first_name, a.last_name,
+-- MAX(f.release_year) as latest_release_year,
+-- EXTRACT(YEAR FROM CURRENT_DATE) - MAX(f.release_year) AS inactivity_gap
+-- FROM actor a
+-- INNER JOIN film_actor fa ON a.actor_id = fa.actor_id
+-- INNER JOIN film f ON f.film_id = fa.film_id
+-- GROUP BY a.actor_id, a.first_name, a.last_name
+-- ORDER BY inactivity_gap DESC
+
+-- V2: gaps between sequential films per each actor;
+
+-- This is my interpertation. I think if they want to track inactivity periods or 
+-- consistent appearances of actors, they would need to have a table with timelines
+-- which consists of actors, movies and gaps between each movies in their career
+-- this would allow them to have more indepth undestanding of actors career
+-- which in turn would allow to make better promotional campaigns
+-- The only con is that it might be too big for interpretation by business people
+-- SELECT a.actor_id, a.first_name, a.last_name, f1.release_year AS year1,
+--     MIN(f2.release_year) AS year2,
+--     MIN(f2.release_year) - f1.release_year AS gap
+-- FROM actor a
+-- INNER JOIN film_actor fa1 ON a.actor_id = fa1.actor_id
+-- INNER JOIN film f1 ON fa1.film_id = f1.film_id
+-- INNER JOIN film_actor fa2 ON a.actor_id = fa2.actor_id
+-- INNER JOIN film f2 ON fa2.film_id = f2.film_id
+--     AND f2.release_year > f1.release_year
+-- GROUP BY a.actor_id, a.first_name, a.last_name, f1.release_year
+-- ORDER BY a.actor_id, year1;
+
+-- Because my previous solution offered a table that might be harder to interpret
+-- I offer another solution, it shows biggest gap of actors in their career
+-- Which is easier to use if you want to know how reliable an actor is
+-- or how active/inactive they are in general faster
+-- WITH actor_films AS (
+-- 	SELECT fa.actor_id, f.release_year FROM film_actor fa
+-- 	INNER JOIN film f ON fa.film_id = f.film_id
+-- ),
+-- gaps as(
+-- 	SELECT af1.actor_id, af1.release_year AS year1, MIN(af2.release_year) AS next_year
+-- 	FROM actor_films af1
+-- 	INNER JOIN actor_films af2 ON af1.actor_id = af2.actor_id
+-- 	AND af2.release_year > af1.release_year
+-- 	GROUP BY af1.actor_id, af1.release_year
+-- )
+-- SELECT a.actor_id, a.first_name, a.last_name, MAX(g.next_year - g.year1) AS max_gap
+-- FROM gaps g
+-- INNER JOIN actor a ON g.actor_id = a.actor_id
+-- GROUP BY a.actor_id, a.first_name, a.last_name
+-- ORDER BY max_gap DESC
