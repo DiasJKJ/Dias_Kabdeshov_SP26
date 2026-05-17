@@ -1,0 +1,113 @@
+1)What operations do the following functions perform: film_in_stock, film_not_in_stock, inventory_in_stock, get_customer_balance, inventory_held_by_customer, rewards_report, last_day? You can find these functions in dvd_rental database.
+
+film_in_stock - inventory filtered by film_id and store_id and uses inventory_in_stock() to check if its in the shelf
+
+
+film_not_in_stock - like in film_in_stock, but uses NOT inventory_in_stock() so that there are copies that are out with customers..
+
+
+inventory_in_stock -  checks if there are rentals for our  inventory_id, then if count == 0 - returns TRUE. If rentals exist, LEFT JOIN between inventory and rental. Then returns FALSE if any row has a NULL return_date
+
+
+get_customer_balance - Suming rental_rate from the film table for a customers history and calculates late fees by extracting the epoch from the difference between return_date and rental_duration. Then subtracts the sum of payment.amount
+
+
+inventory_held_by_customer - SELECT on the rental table for inventory_id where return_date IS NULL to see current borrower
+
+
+rewards_report - Calculates a date range, start of month, 3 months ago. Then creates a temporary table and builds an INSERT string. After it executes to find customers meeting purchase/count thresholds. Their full profiles are returned
+
+
+last_day: Uses a CASE statement to see if the month is December. Its manipulating strings to create a date for first of the next month abd then subtracts 1 day to find the target
+
+
+
+
+2)Why does ‘rewards_report’ function return 0 rows? Correct and recreate the function, so that it's able to return rows properly.
+
+last_month_start := CURRENT_DATE - '3 month'::interval targets the last 90 days from "today." But there are no records from our date. So we need to target last available data in the db
+
+SELECT date_trunc('month', MAX(payment_date))
+INTO last_month_start
+FROM payment;
+last_month_end := last_month_start + INTERVAL '1 month - 1 day';
+INSTEAD OF 
+last_month_start := CURRENT_DATE - '3 month'::interval;
+last_month_start := to_date((extract(YEAR FROM last_month_start) || '-' || extract(MONTH FROM last_month_start) || '-01'),'YYYY-MM-DD');
+
+
+
+
+3)Is there any function that can potentially be removed from the dvd_rental codebase (inefficient? redundant)? If so, which one and why?
+
+last_day is redundant. We can simplify this by truncating the date to the first of the month, adding one month and subtracting one day...
+SELECT (date_trunc('month', $1) + interval '1 month - 1 day')::date;
+
+
+
+
+4) Which functions violate best practices?
+
+inventory_in_stock has two counts. We can be fix it by using EXISTS instead of one of the counts
+fixed:
+CREATE FUNCTION inventory_in_stock(p_inventory_id INT) RETURNS BOOLEAN
+READS SQL DATA
+BEGIN
+    DECLARE v_out_exists INT DEFAULT 0;
+
+    -- Directly check if ANY active rental exists for this inventory item
+    SELECT 1 INTO v_out_exists
+    FROM rental 
+    WHERE inventory_id = p_inventory_id 
+      AND return_date IS NULL 
+    LIMIT 1;
+
+    IF v_out_exists = 1 THEN
+        RETURN FALSE;
+    ELSE
+        RETURN TRUE;
+    END IF;
+END;
+
+
+
+
+5) The ‘get_customer_balance’ function describes the business requirements for calculating the client balance. Unfortunately, not all of them are implemented in this function. Try to change function using the requirements from the comments.
+
+it didn't implement 3rd requirement "If a film is more than rental_duration * 2 overdue, charge the replacement_cost", so:
+SUM(
+  CASE
+    WHEN (rental.return_date - rental.rental_date) > (film.rental_duration * 2 * INTERVAL '1 day')
+      THEN film.replacement_cost
+    WHEN (rental.return_date - rental.rental_date) > (film.rental_duration * INTERVAL '1 day')
+      THEN EXTRACT(DAY FROM (rental.return_date - rental.rental_date - film.rental_duration * INTERVAL '1 day'))
+    ELSE 0
+  END
+)
+
+
+
+
+6) How do ‘group_concat’ and ‘_group_concat’ functions work? (database creation script might help) Where are they used?
+
+It takes two values - the current accumulated value ($1) and the new value ($2). If the second value is NULL function returns the first and ignores empty values. If the first value is NULL second value is returned. In the rest of the situtions both values ​​are combined into a single string, separated by commas, using the concatenation operator ||
+
+
+
+
+7) What does ‘last_updated’ function do? Where is it used?
+there is no 'last_updated' 
+
+
+
+
+8) What is tmpSQL variable for in ‘rewards_report’ function? Can this function be recreated without EXECUTE statement and dynamic SQL? Why?
+
+tmpSQL used to store dynamic queries as text. Used to make INSERT which selects customer ids with certain conditions or to do a DROP TABLE as cleaning up. Function can be recreated without using EXECUTE and dynamic SQL. Using static SQL like RETURN QUERY would make the function simpler, easier to read and more efficient
+
+
+
+
+9) Can any function produce incorrect results? Why?
+
+get_customer_balance assumes return_date is not NULL, making calculations possibly wrong. 
